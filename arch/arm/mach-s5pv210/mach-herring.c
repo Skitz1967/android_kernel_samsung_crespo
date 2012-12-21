@@ -133,10 +133,15 @@ struct wifi_mem_prealloc {
 	unsigned long size;
 };
 
+bool bigmem;
+EXPORT_SYMBOL(bigmem);
+
 static int herring_notifier_call(struct notifier_block *this,
 					unsigned long code, void *_cmd)
 {
 	int mode = REBOOT_MODE_NONE;
+      	if (bigmem)
+        	mode = 9;
 
 	if ((code == SYS_RESTART) && _cmd) {
 		if (!strcmp((char *)_cmd, "recovery"))
@@ -144,7 +149,10 @@ static int herring_notifier_call(struct notifier_block *this,
 		else if (!strcmp((char *)_cmd, "bootloader"))
 			mode = REBOOT_MODE_FAST_BOOT;
 		else
-			mode = REBOOT_MODE_NONE;
+      		   if (bigmem)
+        		mode = 9;
+      		   else
+        	      	mode = REBOOT_MODE_NONE;
 	}
 	__raw_writel(mode, S5P_INFORM6);
 
@@ -368,11 +376,16 @@ static struct s3cfb_lcd r61408 = {
 	},
 };
 
-#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC0 (6144 * SZ_1K)
-// #define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC1 (4 * SZ_1K)
-#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC2 (6144 * SZ_1K)
-#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC0 (14336 * SZ_1K)
-#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC1 (21504 * SZ_1K)
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC0_BM (0 * SZ_1K)
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC2_BM (0 * SZ_1K)
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC0_BM (0 * SZ_1K) // 11 mb
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC1_BM (0 * SZ_1K) 
+
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC0 (5000 * SZ_1K)
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC2 (5000 * SZ_1K)
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC0 (11264 * SZ_1K) // 11 mb
+#define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC1 (11264 * SZ_1K) // 11 mb
+
 #define  S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMD (S5PV210_LCD_WIDTH * \
 					     S5PV210_LCD_HEIGHT * 4 * \
 					     (CONFIG_FB_S3C_NR_BUFFERS + \
@@ -5589,6 +5602,24 @@ static struct platform_device *herring_devices[] __initdata = {
 unsigned int HWREV;
 EXPORT_SYMBOL(HWREV);
 
+static void check_bigmem(void) {
+	int bootmode = __raw_readl(S5P_INFORM6);
+	if (bootmode == 9) {
+		bigmem = true;
+		herring_media_devs[2].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC0_BM;
+		herring_media_devs[4].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC2_BM;
+		herring_media_devs[0].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC0_BM; 
+		herring_media_devs[1].memsize =  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC1_BM;
+	}
+	else {
+		bigmem = false;
+		herring_media_devs[2].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC0;
+		herring_media_devs[4].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_FIMC2;
+		herring_media_devs[0].memsize = S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC0; 
+		herring_media_devs[1].memsize =  S5PV210_VIDEO_SAMSUNG_MEMSIZE_MFC1;
+	}
+}
+
 static void __init herring_map_io(void)
 {
 	s5p_init_io(NULL, 0, S5P_VA_CHIPID);
@@ -5598,6 +5629,7 @@ static void __init herring_map_io(void)
 #ifndef CONFIG_S5P_HIGH_RES_TIMERS
 	s5p_set_timer_source(S5P_PWM3, S5P_PWM4);
 #endif
+	check_bigmem();
 	s5p_reserve_bootmem(herring_media_devs,
 			ARRAY_SIZE(herring_media_devs), S5P_RANGE_MFC);
 #ifdef CONFIG_MTD_ONENAND
